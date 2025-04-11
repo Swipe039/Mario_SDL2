@@ -1,383 +1,244 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_mixer.h>
 #include "Entity.h"
-#include "GameLogic.h"
-#include "Renderer.h"
-#include "Constants.h"
-#include "Control.h"
+#include "GameLogic.h" // Chứa respawnPlayer, resetGameLevel, updateEntity, updateEnemy
+#include "Renderer.h"   // Chứa render
+#include "Constants.h"  // Chứa MAX_HEARTS, GameState enum, etc.
+#include "Control.h"    // Chứa các hàm handleInput
+#include "Init.h"       // Chứa initializeSDL, shutdownSDL
+#include "Texture.h"    // Chứa Load_textures, Clean_up_textures và các biến texture extern (bao gồm heartTexture)
+#include "RenderGameState.h" // Chứa các hàm render màn hình khác (MapSelect, Win, Lose, Pause)
 #include <iostream>
 #include <vector>
-#include <algorithm>
-// Tính điểm
-// Màn hình thắng/thua
-
-SDL_Texture* loadTexture(const char* path, SDL_Renderer* renderer) {
-    SDL_Surface* surface = IMG_Load(path);
-    if (!surface) {
-        std::cout << "Không thể tải " << path << "! IMG_Error: " << IMG_GetError() << std::endl;
-        return nullptr;
-    }
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_FreeSurface(surface);
-    if (!texture) {
-        std::cout << "Không thể tạo texture từ " << path << "! SDL_Error: " << SDL_GetError() << std::endl;
-    }
-    return texture;
-}
+#include <string>
+#include <algorithm> // Cho std::max, std::min
+#include <cstdlib>
+#include <ctime>
 
 int main(int argc, char *argv[]) {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-        std::cout << "SDL không thể khởi tạo! SDL_Error: " << SDL_GetError() << std::endl;
-        return -1;
-    }
-    
-    if (TTF_Init() < 0) {
-        std::cout << "SDL_ttf không thể khởi tạo! TTF_Error: " << TTF_GetError() << std::endl;
-        SDL_Quit();
+    srand(static_cast<unsigned int>(time(0))); // Khởi tạo seed cho random
+
+    // --- Khởi tạo SDL và các thành phần ---
+    SDL_Window* window = nullptr;
+    SDL_Renderer* renderer = nullptr;
+    if (!initializeSDL(window, renderer)) {
+        std::cerr << "Failed to initialize SDL. Exiting." << std::endl;
         return -1;
     }
 
-    if (IMG_Init(IMG_INIT_PNG) == 0) {
-        std::cout << "SDL_image không thể khởi tạo! IMG_Error: " << IMG_GetError() << std::endl;
-        TTF_Quit();
-        SDL_Quit();
-        return -1;
-    }
-
-    SDL_Window *window = SDL_CreateWindow("Super Mario SDL2", 
-                                        SDL_WINDOWPOS_CENTERED, 
-                                        SDL_WINDOWPOS_CENTERED, 
-                                        SCREEN_WIDTH, 
-                                        SCREEN_HEIGHT, 
-                                        SDL_WINDOW_SHOWN);
-    if (!window) {
-        std::cout << "Không thể tạo cửa sổ! SDL_Error: " << SDL_GetError() << std::endl;
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
-        return -1;
-    }
-    
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!renderer) {
-        std::cout << "Không thể tạo renderer! SDL_Error: " << SDL_GetError() << std::endl;
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
-        return -1;
-    }
-
-    TTF_Font *font = TTF_OpenFont("arial.ttf", 24);
+    // Mở Font
+    font = TTF_OpenFont("Font/SuperMario256.ttf", 24);
     if (!font) {
-        std::cout << "Không thể tải font! TTF_Error: " << TTF_GetError() << std::endl;
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
+        std::cerr << "Font Loading Error: " << TTF_GetError() << std::endl;
+        shutdownSDL(window, renderer); // Dọn dẹp SDL đã khởi tạo
         return -1;
     }
 
-    // Tải Groundblock.png
-    SDL_Texture *groundTexture = loadTexture("Groundblock.png", renderer);
-    if (!groundTexture) {
-        TTF_CloseFont(font);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
+    // Load Textures (bao gồm cả heartTexture)
+    if (!Load_textures(renderer)) {
+        std::cerr << "Failed to load textures. Exiting." << std::endl;
+        Clean_up_textures(); // Dọn dẹp texture đã load (nếu có)
+        TTF_CloseFont(font); // Đóng font
+        shutdownSDL(window, renderer); // Dọn dẹp SDL
         return -1;
     }
 
-    // Tải các texture hoạt ảnh cho Mario
-    SDL_Texture *jumpLeftTextures[7];
-    SDL_Texture *jumpRightTextures[7];
-    SDL_Texture *runLeftTextures[3];
-    SDL_Texture *runRightTextures[3];
-    SDL_Texture *standLeftTexture;
-    SDL_Texture *standRightTexture;
-
-    for (int i = 0; i < 7; i++) {
-        jumpLeftTextures[i] = loadTexture(("Jump_left_" + std::to_string(i + 1) + ".png").c_str(), renderer);
-        jumpRightTextures[i] = loadTexture(("Jump_right_" + std::to_string(i + 1) + ".png").c_str(), renderer);
-        if (!jumpLeftTextures[i] || !jumpRightTextures[i]) {
-            for (int j = 0; j < i; j++) {
-                SDL_DestroyTexture(jumpLeftTextures[j]);
-                SDL_DestroyTexture(jumpRightTextures[j]);
-            }
-            SDL_DestroyTexture(groundTexture);
-            TTF_CloseFont(font);
-            SDL_DestroyRenderer(renderer);
-            SDL_DestroyWindow(window);
-            IMG_Quit();
-            TTF_Quit();
-            SDL_Quit();
-            return -1;
-        }
+    // Load Âm thanh
+    Mix_Music *gameplayMusic = Mix_LoadMUS("Sound/Ground-Theme.wav");
+    Mix_Music *menuMusic = Mix_LoadMUS("Sound/Underground-Theme.wav");
+    if (!gameplayMusic) {
+        std::cerr << "Failed to load Ground-Theme.wav! Mix_Error: " << Mix_GetError() << std::endl;
+        // Có thể tiếp tục không có nhạc gameplay
+    }
+    if (!menuMusic) {
+        std::cerr << "Failed to load Underground-Theme.wav! Mix_Error: " << Mix_GetError() << std::endl;
+        // Có thể tiếp tục không có nhạc menu
     }
 
-    for (int i = 0; i < 3; i++) {
-        runLeftTextures[i] = loadTexture(("Run_left_" + std::to_string(i + 1) + ".png").c_str(), renderer);
-        runRightTextures[i] = loadTexture(("Run_right_" + std::to_string(i + 1) + ".png").c_str(), renderer);
-        if (!runLeftTextures[i] || !runRightTextures[i]) {
-            for (int j = 0; j < i; j++) {
-                SDL_DestroyTexture(runLeftTextures[j]);
-                SDL_DestroyTexture(runRightTextures[j]);
-            }
-            for (int j = 0; j < 7; j++) {
-                SDL_DestroyTexture(jumpLeftTextures[j]);
-                SDL_DestroyTexture(jumpRightTextures[j]);
-            }
-            SDL_DestroyTexture(groundTexture);
-            TTF_CloseFont(font);
-            SDL_DestroyRenderer(renderer);
-            SDL_DestroyWindow(window);
-            IMG_Quit();
-            TTF_Quit();
-            SDL_Quit();
-            return -1;
-        }
-    }
-
-    standLeftTexture = loadTexture("Stand_left.png", renderer);
-    standRightTexture = loadTexture("Stand_right.png", renderer);
-    if (!standLeftTexture || !standRightTexture) {
-        for (int j = 0; j < 7; j++) {
-            SDL_DestroyTexture(jumpLeftTextures[j]);
-            SDL_DestroyTexture(jumpRightTextures[j]);
-        }
-        for (int j = 0; j < 3; j++) {
-            SDL_DestroyTexture(runLeftTextures[j]);
-            SDL_DestroyTexture(runRightTextures[j]);
-        }
-        SDL_DestroyTexture(groundTexture);
-        TTF_CloseFont(font);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
-        return -1;
-    }
-
-    // Tải Fly_block.png
-    SDL_Texture *flyBlockTexture = loadTexture("Fly_block.png", renderer);
-    if (!flyBlockTexture) {
-        SDL_DestroyTexture(groundTexture);
-        TTF_CloseFont(font);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
-        return -1;
-    }
-
-    SDL_Texture *starTexture = loadTexture("Star.png", renderer);   
-    if (!starTexture) {
-        SDL_DestroyTexture(flyBlockTexture);
-        SDL_DestroyTexture(groundTexture);
-        TTF_CloseFont(font);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
-        return -1;
-    }
-
-    SDL_Texture *enemyTexture = loadTexture("Enemy.png", renderer);
-    if (!enemyTexture) {        
-        SDL_DestroyTexture(starTexture);
-        SDL_DestroyTexture(flyBlockTexture);
-        SDL_DestroyTexture(groundTexture);
-        TTF_CloseFont(font);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        IMG_Quit();
-        TTF_Quit();
-        SDL_Quit();
-        return -1;
-    }
-
+    // --- Khởi tạo biến trạng thái Game ---
     GameState state = MAIN_MENU;
+    GameState nextState = MAIN_MENU; // Dùng để quản lý chuyển đổi state mượt hơn
     bool running = true;
-    int selectedMap = 0;
-    int currentMap = 0;
-    
-    Entity mario(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100, 50, 50, 0, 0, true);
-    std::vector<Entity> enemies;
-    std::vector<bool> enemiesAlive;
-    std::vector<SDL_Rect> stars;
-    int cameraX = 0;
-    int marioVelocityX = 0;
-    bool dropThrough = false;
-    int score = 0; // Biến điểm số
+    int selectedMap = 0; // Map đang được chọn trong màn hình Map Select
+    int currentMap = 0; // Map đang chơi thực tế
+    int selectedMenuItem = 0; // Item đang được chọn trong các menu
 
-    Uint32 frameStart;
-    int frameTime;
-    const int FPS = 60;
-    const int frameDelay = 1000 / FPS;
+    // --- Khởi tạo biến người chơi và thế giới game ---
+    Entity mario(100, 100, 50, 50, 0, 0, false); // Vị trí bắt đầu (sẽ được reset trong resetGameLevel)
+    int playerHearts = MAX_HEARTS;                 // << Biến mạng sống >>
+    std::vector<Entity> enemies;                   // Danh sách kẻ địch
+    std::vector<bool> enemiesAlive;                // Trạng thái sống/chết của kẻ địch
+    std::vector<SDL_Rect> stars;                   // Danh sách sao (nếu còn dùng)
+    std::vector<Cloud> clouds;                     // Danh sách mây
+    std::vector<SDL_Rect> coins;                   // Danh sách coin
+    int collectedCoins = 0;                        // Số coin đã thu thập
+    int totalCoinsInMap = 0;                       // Tổng số coin trong map hiện tại
+    int cameraX = 0;                               // Vị trí camera theo trục X
+    bool dropThrough = false;                      // Cờ cho phép rơi qua platform
+    int score = 0;                                 // Điểm số
+    Mix_Music* currentlyPlayingMusic = nullptr;    // Nhạc đang phát
 
+    // --- Vòng lặp Game chính ---
     while (running) {
-        frameStart = SDL_GetTicks();
+        SDL_Event e; // Biến lưu trữ sự kiện
 
-        switch (state) {
-            case MAIN_MENU: {
-                int selectedItem = 0;
-                bool inMainMenu = true;
-                while (inMainMenu && running) {
-                    SDL_Event e;
-                    while (SDL_PollEvent(&e)) {
-                        if (e.type == SDL_QUIT) {
-                            inMainMenu = false;
-                            running = false;
-                        }
-                        if (e.type == SDL_KEYDOWN) {
-                            switch (e.key.keysym.sym) {
-                                case SDLK_UP:
-                                    selectedItem = (selectedItem - 1 + MENU_ITEM_COUNT) % MENU_ITEM_COUNT;
-                                    break;
-                                case SDLK_DOWN:
-                                    selectedItem = (selectedItem + 1) % MENU_ITEM_COUNT;
-                                    break;
-                                case SDLK_RETURN:
-                                    if (selectedItem == 0) {
-                                        state = MAP_SELECT;
-                                        inMainMenu = false;
-                                    } else {
-                                        running = false;
-                                        inMainMenu = false;
-                                    }
-                                    break;
-                                case SDLK_ESCAPE:
-                                    running = false;
-                                    inMainMenu = false;
-                                    break;
-                            }
-                        }
-                    }
-                    renderMenu(renderer, font, selectedItem);
-                    frameTime = SDL_GetTicks() - frameStart;
-                    if (frameDelay > frameTime) {
-                        SDL_Delay(frameDelay - frameTime);
-                    }
-                }
-                break;
+        // --- Xử lý chuyển đổi trạng thái ---
+        if (state != nextState) {
+            state = nextState;
+            selectedMenuItem = 0; // Reset lựa chọn menu khi chuyển state
+            if (Mix_PlayingMusic()) {
+                 Mix_HaltMusic(); // Dừng nhạc cũ
+                 currentlyPlayingMusic = nullptr;
             }
-            case MAP_SELECT: {
-                bool inMapSelect = true;
-                selectedMap = 0;
-                while (inMapSelect && running) {
-                    SDL_Event e;
-                    handleMapSelectInput(e, state, selectedMap);
-                    if (state == GAMEPLAY) {
-                        currentMap = selectedMap;
-                        inMapSelect = false;
-                        mario = Entity(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100, 50, 50, 0, 0, true);
-                        enemies.clear();
-                        enemiesAlive.clear();
-                        stars.clear();
-                        for (int y = 0; y < MAP_HEIGHT; y++) {
-                            for (int x = 0; x < MAP_WIDTH; x++) {
-                                if (tilemaps[currentMap][y][x] == 4) {
-                                    Entity enemy(x * TILE_SIZE, y * TILE_SIZE, 50, 50, 0, 0, false);
-                                    enemy.direction = 1;
-                                    enemies.push_back(enemy);
-                                    enemiesAlive.push_back(true);
-                                } else if (tilemaps[currentMap][y][x] == 5) {
-                                    SDL_Rect star = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE};
-                                    stars.push_back(star);
-                                }
-                            }
-                        }
-                    } else if (state == MAIN_MENU) {
-                        inMapSelect = false;
-                    }
-                    renderMapSelect(renderer, font, selectedMap);
-                    frameTime = SDL_GetTicks() - frameStart;
-                    if (frameDelay > frameTime) {
-                        SDL_Delay(frameDelay - frameTime);
-                    }
-                }
-                break;
-            }
-            case GAMEPLAY: {
-                int deltaY = 0;
-                int PreY = mario.rect.y;
-                SDL_Event e;
-                handleInput(e, running, mario, marioVelocityX, dropThrough, state);
-                mario.velocityX = marioVelocityX;
-                cameraX = mario.rect.x - SCREEN_WIDTH / 2;
-                cameraX = std::max(0, std::min(cameraX, MAP_WIDTH * TILE_SIZE - SCREEN_WIDTH));
-                // Sửa lỗi: Thêm tham số score vào hàm updateEntity
-                updateEntity(mario, enemies, enemiesAlive, running, dropThrough, cameraX, state, stars, tilemaps[currentMap], score);
-                deltaY = mario.rect.y - PreY;
-                for (size_t i = 0; i < enemies.size(); i++) {
-                    if (enemiesAlive[i]) {
-                        updateEnemy(enemies[i], enemiesAlive[i], cameraX, tilemaps[currentMap]);
-                        if (enemies[i].rect.y > MAP_HEIGHT * TILE_SIZE) {
-                            enemiesAlive[i] = false;
-                        }
-                    }
-                }
-                render(renderer, mario, enemies, enemiesAlive, cameraX, stars, currentMap, font, groundTexture, flyBlockTexture, starTexture, enemyTexture,
-                       jumpLeftTextures, jumpRightTextures, runLeftTextures, runRightTextures, standLeftTexture, standRightTexture, deltaY, score);
-                frameTime = SDL_GetTicks() - frameStart;
-                if (frameDelay > frameTime) {
-                    SDL_Delay(frameDelay - frameTime);
-                }
-                break;
-            }
-            case PAUSE_MENU: {
-                int deltaY = 0;
-                int PreY = mario.rect.y;
-                int selectedItem = 0;
-                bool inPauseMenu = true;
-                while (inPauseMenu && running) {
-                    SDL_Event e;
-                    handlePauseMenuInput(e, state, running);
-                    if (state != PAUSE_MENU) {
-                        inPauseMenu = false;
-                    }
-                    deltaY = mario.rect.y - PreY;
-                    render(renderer, mario, enemies, enemiesAlive, cameraX, stars, currentMap, font, groundTexture, flyBlockTexture, starTexture, enemyTexture,
-                           jumpLeftTextures, jumpRightTextures, runLeftTextures, runRightTextures, standLeftTexture, standRightTexture, deltaY, score);
-                    renderPauseMenu(renderer, font, selectedItem);
-                    frameTime = SDL_GetTicks() - frameStart;
-                    if (frameDelay > frameTime) {
-                        SDL_Delay(frameDelay - frameTime);
-                    }
-                }
-                break;
+            // Reset thêm nếu cần khi vào state mới
+            if (state == MAP_SELECT) {
+                selectedMap = currentMap; // Hiển thị map đang chọn là map hiện tại
             }
         }
-    }
 
-    // Giải phóng tài nguyên
-    SDL_DestroyTexture(groundTexture);
-    for (int i = 0; i < 7; i++) {
-        SDL_DestroyTexture(jumpLeftTextures[i]);
-        SDL_DestroyTexture(jumpRightTextures[i]);
-    }
-    for (int i = 0; i < 3; i++) {
-        SDL_DestroyTexture(runLeftTextures[i]);
-        SDL_DestroyTexture(runRightTextures[i]);
-    }
-    SDL_DestroyTexture(flyBlockTexture);
-    SDL_DestroyTexture(standLeftTexture);
-    SDL_DestroyTexture(standRightTexture);
-    SDL_DestroyTexture(starTexture);
-    SDL_DestroyTexture(enemyTexture);
-    if (font) TTF_CloseFont(font);
-    if (renderer) SDL_DestroyRenderer(renderer);
-    if (window) SDL_DestroyWindow(window);
-    IMG_Quit();
-    TTF_Quit();
-    SDL_Quit();
-    
-    return 0;
+        // --- Xử lý phát nhạc nền ---
+        Mix_Music* desiredMusic = nullptr;
+        if (state == GAMEPLAY) {
+            desiredMusic = gameplayMusic;
+        } else if (state == MAIN_MENU || state == MAP_SELECT || state == WIN_SCREEN || state == LOSE_SCREEN) { // Các màn hình dùng nhạc menu
+            desiredMusic = menuMusic;
+        }
+        // Phát nhạc mới nếu cần
+        if (desiredMusic != nullptr && currentlyPlayingMusic != desiredMusic) {
+            if (Mix_PlayingMusic()) {
+                Mix_HaltMusic();
+            }
+            Mix_PlayMusic(desiredMusic, -1); // Lặp vô hạn
+            currentlyPlayingMusic = desiredMusic;
+        }
+        // Dừng nhạc nếu không có nhạc mong muốn (ví dụ: màn hình Pause không nhạc)
+        else if (desiredMusic == nullptr && Mix_PlayingMusic()) {
+            Mix_HaltMusic();
+            currentlyPlayingMusic = nullptr;
+        }
+
+
+        // --- Xử lý logic và render dựa trên trạng thái game ---
+        switch (state) {
+            case MAIN_MENU:
+                 handleMainMenuInput(e, nextState, running, selectedMenuItem); // nextState sẽ thay đổi nếu chọn Start/Exit
+                 renderMenu(renderer, font, selectedMenuItem); // Vẽ menu chính
+                 break; // Kết thúc case MAIN_MENU
+
+             case MAP_SELECT:
+                // Reset level khi vào màn hình chọn map (để chuẩn bị cho map mới)
+                // Lưu ý: score và hearts cũng được reset ở đây
+                resetGameLevel(mario, enemies, enemiesAlive, stars, clouds, coins, collectedCoins, totalCoinsInMap, cloudTexture1, cloudTexture2, score, currentMap, playerHearts);
+                cameraX = 0; // Reset camera khi quay lại chọn map
+
+                handleMapSelectInput(e, nextState, running, selectedMap); // Xử lý input chọn map
+
+                // Nếu người chơi chọn map và nhấn Enter (nextState = GAMEPLAY)
+                if (nextState == GAMEPLAY) {
+                    currentMap = selectedMap; // Cập nhật map sẽ chơi
+                    score = 0; // Reset điểm khi bắt đầu map mới
+                    // Reset lại game với map MỚI và reset hearts/score
+                    resetGameLevel(mario, enemies, enemiesAlive, stars, clouds, coins, collectedCoins, totalCoinsInMap, cloudTexture1, cloudTexture2, score, currentMap, playerHearts);
+                    cameraX = 0; // Đảm bảo camera bắt đầu từ 0 cho map mới
+                }
+                renderMapSelect(renderer, font, selectedMap); // Vẽ màn hình chọn map
+                 break; // Kết thúc case MAP_SELECT
+
+            case GAMEPLAY: { // Sử dụng scope để khai báo biến tạm thời
+                int heartsBeforeUpdate = playerHearts; // Lưu số mạng trước khi cập nhật
+
+                // Xử lý input người chơi
+                handleInput(mario, running, dropThrough, nextState); // nextState có thể thành PAUSE_MENU
+
+                // Cập nhật trạng thái người chơi và va chạm
+                // Hàm này sẽ xử lý mất mạng, hồi sinh, và chuyển sang LOSE_SCREEN nếu hết mạng
+                updateEntity(mario, enemies, enemiesAlive, running, dropThrough, nextState, stars, coins, collectedCoins, totalCoinsInMap, tilemaps[currentMap], score, playerHearts);
+
+                // Nếu người chơi mất mạng nhưng game chưa kết thúc (vừa hồi sinh) -> Reset camera
+                if (state == GAMEPLAY && playerHearts < heartsBeforeUpdate) {
+                     cameraX = 0; // Reset camera về đầu map
+                     std::cout << "Camera reset after respawn." << std::endl;
+                }
+
+                // Cập nhật trạng thái kẻ địch (chỉ khi game đang chạy bình thường)
+                if (state == GAMEPLAY){
+                    for (size_t i = 0; i < enemies.size(); i++) {
+                        if (enemiesAlive[i]) {
+                            // Hàm updateEnemy trả về false nếu enemy chết (ví dụ: rơi vực)
+                            enemiesAlive[i] = updateEnemy(enemies[i], enemiesAlive[i], cameraX, tilemaps[currentMap]);
+                        }
+                    }
+                }
+
+                // Cập nhật camera (chỉ khi game đang chạy bình thường)
+                 if (state == GAMEPLAY){
+                    cameraX = mario.rect.x - SCREEN_WIDTH / 3; // Giữ Mario ở khoảng 1/3 màn hình bên trái
+                    // Giới hạn camera không đi ra ngoài map
+                    cameraX = std::max(0, std::min(cameraX, MAP_WIDTH * TILE_SIZE - SCREEN_WIDTH));
+                 }
+
+                // Render màn hình game (bao gồm cả hearts)
+                render(renderer, mario, enemies, enemiesAlive, cameraX, stars, clouds, cloudTexture1, cloudTexture2,
+                       pipeTopTexture, pipeBodyTexture, coinTexture, coins, collectedCoins, currentMap, font,
+                       groundTexture, flyBlockTexture, starTexture,enemyTextures,
+                       jumpLeftTextures, jumpRightTextures, runLeftTextures, runRightTextures,
+                       standLeftTexture, standRightTexture,
+                       finishLineTexture, score,
+                       playerHearts, heartTexture); // Truyền playerHearts và heartTexture
+                SDL_RenderPresent(renderer); // Hiển thị lên màn hình
+                break; // Kết thúc case GAMEPLAY
+            } // Đóng scope của case GAMEPLAY
+
+            case PAUSE_MENU:
+                 handlePauseMenuInput(e, nextState, running, selectedMenuItem); // nextState có thể thành GAMEPLAY hoặc MAIN_MENU
+                 // Vẫn render màn hình game phía sau Pause Menu
+                 render(renderer, mario, enemies, enemiesAlive, cameraX, stars, clouds, cloudTexture1, cloudTexture2,
+                        pipeTopTexture, pipeBodyTexture, coinTexture, coins, collectedCoins, currentMap, font,
+                        groundTexture, flyBlockTexture, starTexture,
+                        enemyTextures, jumpLeftTextures, jumpRightTextures, runLeftTextures, runRightTextures,
+                        standLeftTexture, standRightTexture,
+                        finishLineTexture, score,
+                        playerHearts, heartTexture); // Truyền playerHearts và heartTexture
+                 renderPauseMenu(renderer, font, selectedMenuItem); // Vẽ menu Pause đè lên trên
+                 SDL_RenderPresent(renderer);
+                 break; // Kết thúc case PAUSE_MENU
+
+            case WIN_SCREEN:
+                  handleWinLoseInput(e, state, nextState, running, selectedMenuItem); // Xử lý input màn hình Win
+
+                  // Nếu chọn Retry (GAMEPLAY) hoặc Map Select, cần reset
+                  if (nextState == GAMEPLAY || nextState == MAP_SELECT) {
+                      score = 0; // Reset điểm
+                      // Reset level với map hiện tại (nếu retry) hoặc chuẩn bị reset ở MAP_SELECT
+                      resetGameLevel(mario, enemies, enemiesAlive, stars, clouds, coins, collectedCoins, totalCoinsInMap, cloudTexture1, cloudTexture2, score, currentMap, playerHearts);
+                      cameraX = 0;
+                  }
+                  renderWinScreen(renderer, font, score, selectedMenuItem); // Vẽ màn hình thắng
+                 break; // Kết thúc case WIN_SCREEN
+
+             case LOSE_SCREEN:
+                  handleWinLoseInput(e, state, nextState, running, selectedMenuItem); // Xử lý input màn hình Lose
+
+                  // Nếu chọn Retry (GAMEPLAY) hoặc Map Select, cần reset
+                  if (nextState == GAMEPLAY || nextState == MAP_SELECT) {
+                     score = 0; // Reset điểm
+                     // Reset level với map hiện tại (nếu retry) hoặc chuẩn bị reset ở MAP_SELECT
+                     resetGameLevel(mario, enemies, enemiesAlive, stars, clouds, coins, collectedCoins, totalCoinsInMap, cloudTexture1, cloudTexture2, score, currentMap, playerHearts);
+                     cameraX = 0;
+                  }
+                  renderLoseScreen(renderer, font, score, selectedMenuItem); // Vẽ màn hình thua
+                  break; 
+        } 
+    } 
+
+    std::cout << "Exiting game loop. Cleaning up all resources..." << std::endl;
+    Clean_up_textures(); // Dọn dẹp tất cả textures và font
+    if (gameplayMusic) { Mix_FreeMusic(gameplayMusic); gameplayMusic = nullptr; std::cout << "Gameplay music freed." << std::endl;}
+    if (menuMusic) { Mix_FreeMusic(menuMusic); menuMusic = nullptr; std::cout << "Menu music freed." << std::endl;}
+    // Font đã được dọn dẹp trong Clean_up_textures()
+    shutdownSDL(window, renderer); // Dọn dẹp SDL, window, renderer, và các thư viện con
+    std::cout << "Cleanup complete. Exiting application." << std::endl;
+    return 0; 
 }

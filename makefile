@@ -8,11 +8,11 @@
 # all: 
 # # 	g++ -std=c++11 -Wall -O0 -g -lSDL2_ttf -lSDL2 -I/opt/homebrew/include/SDL2 -L/opt/homebrew/lib -lSDL2 -lSDL2_ttf main.cpp GameLogic.cpp Renderer.cpp -o mario
 CXX = clang++
-CXXFLAGS = -std=c++11 -I/opt/homebrew/include -I/opt/homebrew/Cellar/sdl2/2.32.2/include -I/opt/homebrew/Cellar/sdl2_image/2.8.8/include -I/opt/homebrew/Cellar/sdl2_ttf/2.24.0/include
-LDFLAGS = -L/opt/homebrew/lib -L/opt/homebrew/Cellar/sdl2/2.32.2/lib -L/opt/homebrew/Cellar/sdl2_image/2.8.8/lib -L/opt/homebrew/Cellar/sdl2_ttf/2.24.0/lib -lSDL2 -lSDL2_ttf -lSDL2_image
+CXXFLAGS = -std=c++11 -I/opt/homebrew/include -I/opt/homebrew/Cellar/sdl2/2.32.4/include -I/opt/homebrew/Cellar/sdl2_image/2.8.8/include -I/opt/homebrew/Cellar/sdl2_ttf/2.24.0/include -I/opt/homebrew/Cellar/sdl2_mixer/2.8.1_1/include
+LDFLAGS = -L/opt/homebrew/lib -L/opt/homebrew/Cellar/sdl2/2.32.4/lib -L/opt/homebrew/Cellar/sdl2_image/2.8.8/lib -L/opt/homebrew/Cellar/sdl2_ttf/2.24.0/lib -L/opt/homebrew/Cellar/sdl2_mixer/2.8.1_1/lib -lSDL2 -lSDL2_ttf -lSDL2_image -lSDL2_mixer 
 
 TARGET = game
-SRC = main.cpp GameLogic.cpp Renderer.cpp Control.cpp
+SRC = main.cpp GameLogic.cpp Renderer.cpp Control.cpp Texture.cpp Init.cpp RenderGameState.cpp
 
 all: $(TARGET)
 
