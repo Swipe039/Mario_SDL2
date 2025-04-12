@@ -2,14 +2,14 @@
 #define TEXTURE_H
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_image.h> 
-#include <SDL2/SDL_ttf.h>  
+#include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_mixer.h>
 #include <string>
-#include <vector> 
+#include <vector>
 #include "Constants.h"
 
-
-extern TTF_Font *font; 
+extern TTF_Font *font;
 extern SDL_Texture *groundTexture;
 extern SDL_Texture *flyBlockTexture;
 extern SDL_Texture *starTexture;
@@ -27,9 +27,13 @@ extern SDL_Texture *jumpRightTextures[7];
 extern SDL_Texture *runLeftTextures[3];
 extern SDL_Texture *runRightTextures[3];
 extern SDL_Texture *heartTexture;
+extern SDL_Texture *mapSelectBackgroundTexture;
+extern Mix_Chunk *winSound;
+extern Mix_Chunk *buffSound;
+extern Mix_Chunk *jumpSound;
 
 bool Load_textures(SDL_Renderer* renderer);
 void Clean_up_textures();
 SDL_Texture* loadTexture(const char* path, SDL_Renderer* renderer);
 
-#endif // TEXTURE_H
+#endif 

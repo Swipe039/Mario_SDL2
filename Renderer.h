@@ -4,6 +4,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <vector>
+#include <string> 
 #include "Entity.h"
 #include "Constants.h"
 
@@ -13,7 +14,6 @@ struct Cloud {
     SDL_Texture* texture;
 };
 
-// <<< Cập nhật chữ ký hàm render - THAY enemyTexture thành enemyTextures[2] >>>
 void render(SDL_Renderer* renderer, Entity& mario, std::vector<Entity>& enemies, std::vector<bool>& enemiesAlive, int cameraX, std::vector<SDL_Rect>& stars,
     std::vector<Cloud>& clouds, SDL_Texture* cloudTexture1, SDL_Texture* cloudTexture2,
     SDL_Texture* pipeTopTexture, SDL_Texture* pipeBodyTexture,
@@ -24,9 +24,9 @@ void render(SDL_Renderer* renderer, Entity& mario, std::vector<Entity>& enemies,
     SDL_Texture *jumpLeftTextures[7], SDL_Texture *jumpRightTextures[7], SDL_Texture *runLeftTextures[3], SDL_Texture *runRightTextures[3],
     SDL_Texture *standLeftTexture, SDL_Texture *standRightTexture,
     SDL_Texture* finishLineTexture,
-    int score,
+    int score, 
     int playerHearts, SDL_Texture* heartTexture);
 
-void renderMenu(SDL_Renderer *renderer, TTF_Font *font, int selectedItem);
 void renderText(SDL_Renderer *renderer, TTF_Font *font, const std::string &text, int x, int y, SDL_Color color);
-#endif
+
+#endif 

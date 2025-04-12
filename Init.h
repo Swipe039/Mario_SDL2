@@ -6,4 +6,4 @@
 bool initializeSDL(SDL_Window*& window, SDL_Renderer*& renderer);
 void shutdownSDL(SDL_Window* window, SDL_Renderer* renderer);
 
-#endif // INIT_H
+#endif 

@@ -5,12 +5,15 @@
 #include "Control.h"
 #include "Init.h"
 #include "Entity.h"
+#include <SDL2/SDL_mixer.h>
 #include <iostream>
 #include <cmath>
 #include <vector>
 #include <string>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
+
 
 void updateEntity(Entity &entity, std::vector<Entity> &enemies, std::vector<bool> &enemiesAlive,
                   bool &running, bool dropThrough, GameState &state,
@@ -24,7 +27,7 @@ void updateEntity(Entity &entity, std::vector<Entity> &enemies, std::vector<bool
         for (int x = 0; x < MAP_WIDTH; x++) {
             int tileType = tilemap[y][x];
             if (tileType == GROUND_TILE || tileType == FLY_BLOCK_TILE || tileType == DECORATIVE_TILE ||
-                tileType == FINISH_BLOCK_TILE || tileType == PIPE_TOP_TILE || tileType == PIPE_BODY_TILE) {
+                tileType == PIPE_TOP_TILE || tileType == PIPE_BODY_TILE) {
                 SDL_Rect tileRect = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE};
                 if (SDL_HasIntersection(&futureXRect, &tileRect)) {
                     if (entity.velocityX > 0) { newX = tileRect.x - entity.rect.w; }
@@ -51,7 +54,7 @@ void updateEntity(Entity &entity, std::vector<Entity> &enemies, std::vector<bool
             if (tileType == EMPTY_TILE || tileType == ENEMY_SPAWN_TILE || tileType == STAR_TILE || tileType == COIN_TILE || tileType == DECORATIVE_TILE) continue;
             SDL_Rect tileRect = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE};
             if (SDL_HasIntersection(&futureYRect, &tileRect)) {
-                if (tileType == GROUND_TILE || tileType == FINISH_BLOCK_TILE || tileType == PIPE_TOP_TILE || tileType == PIPE_BODY_TILE) {
+                if (tileType == GROUND_TILE || tileType == PIPE_TOP_TILE || tileType == PIPE_BODY_TILE) {
                     if (entity.velocityY >= 0) { newY = tileRect.y - entity.rect.h; entity.onGround = true; }
                     else { newY = tileRect.y + tileRect.h; }
                     entity.velocityY = 0; yCollision = true; break;
@@ -108,8 +111,9 @@ void updateEntity(Entity &entity, std::vector<Entity> &enemies, std::vector<bool
                 entity.rect.h = static_cast<int>(entity.originalH * STAR_SCALE);
                 entity.rect.y -= (entity.rect.h - oldH); entity.wasBuffed = true;
             }
-            score += STAR_POINTS; stars.erase(stars.begin() + i);
-            std::cout << "DEBUG: Star collected. Remaining stars: " << stars.size() << std::endl;
+            score += STAR_POINTS;
+            Mix_PlayChannel(-1, buffSound, 0);
+            stars.erase(stars.begin() + i);
         } else { ++i; }
     }
     if (entity.isBuffed) {
@@ -132,13 +136,10 @@ void updateEntity(Entity &entity, std::vector<Entity> &enemies, std::vector<bool
                 bool stomp = entity.velocityY > 0 && (enemyMarioRect.y + enemyMarioRect.h) >= enemyRect.y && (enemyMarioRect.y + enemyMarioRect.h) <= (enemyRect.y + enemyRect.h / 2);
                 if (stomp) {
                     enemiesAlive[i] = false; entity.velocityY = JUMP_FORCE / 1.5; score += ENEMY_POINTS;
-                    std::cout << "Stomped enemy!" << std::endl;
                 } else if (entity.isBuffed) {
                     enemiesAlive[i] = false; score += ENEMY_POINTS;
-                    std::cout << "Defeated enemy with buff!" << std::endl;
                 } else {
                     playerHearts--;
-                    std::cout << "Lost a heart by collision! Hearts remaining: " << playerHearts << std::endl;
                     if (playerHearts <= 0) { state = LOSE_SCREEN; return; }
                     else { respawnPlayer(entity); break; }
                 }
@@ -147,9 +148,9 @@ void updateEntity(Entity &entity, std::vector<Entity> &enemies, std::vector<bool
     }
     if (state == LOSE_SCREEN) return;
 
-    if (entity.onGround && state == GAMEPLAY) {
+    if ( state == GAMEPLAY) {
         int footX = entity.rect.x + entity.rect.w / 2;
-        int footY = entity.rect.y + entity.rect.h + 1;
+        int footY = entity.rect.y + entity.rect.h ;
         int tileX = footX / TILE_SIZE; int tileY = footY / TILE_SIZE;
         if (tileX >= 0 && tileX < MAP_WIDTH && tileY >= 0 && tileY < MAP_HEIGHT) {
             if (tilemap[tileY][tileX] == FINISH_BLOCK_TILE) {
@@ -274,7 +275,6 @@ void resetGameLevel(Entity& mario, std::vector<Entity>& enemies, std::vector<boo
             }
         }
     }
-    std::cout << "DEBUG: resetGameLevel finished for Map " << currentMap << ". Total Coins: " << totalCoinsInMap << ". Hearts reset to: " << playerHearts << std::endl;
 }
 
 void respawnPlayer(Entity& mario) {

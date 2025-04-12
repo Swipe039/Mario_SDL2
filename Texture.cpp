@@ -3,17 +3,16 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
-// Không cần include <SDL2/SDL_mixer.h> ở đây nếu chỉ quản lý texture/font
+#include <SDL2/SDL_mixer.h>
 #include <iostream>
 #include <string>
-#include <vector> // Include nếu dùng vector trong Texture.h
+#include <vector>
 
-// Định nghĩa các biến toàn cục đã khai báo với extern trong Texture.h
-TTF_Font *font = nullptr; // Khởi tạo là nullptr
+TTF_Font *font = nullptr;
 SDL_Texture *groundTexture = nullptr;
 SDL_Texture *flyBlockTexture = nullptr;
 SDL_Texture *starTexture = nullptr;
-SDL_Texture *enemyTextures[2] = {nullptr, nullptr}; // Khởi tạo các phần tử
+SDL_Texture *enemyTextures[2] = {nullptr, nullptr};
 SDL_Texture *standLeftTexture = nullptr;
 SDL_Texture *standRightTexture = nullptr;
 SDL_Texture *cloudTexture1 = nullptr;
@@ -22,14 +21,18 @@ SDL_Texture *pipeTopTexture = nullptr;
 SDL_Texture *pipeBodyTexture = nullptr;
 SDL_Texture *coinTexture = nullptr;
 SDL_Texture *finishLineTexture = nullptr;
-SDL_Texture *heartTexture = nullptr; 
-SDL_Texture *jumpLeftTextures[7] = {nullptr}; // Khởi tạo các phần tử
+SDL_Texture *heartTexture = nullptr;
+SDL_Texture *jumpLeftTextures[7] = {nullptr};
 SDL_Texture *jumpRightTextures[7] = {nullptr};
 SDL_Texture *runLeftTextures[3] = {nullptr};
 SDL_Texture *runRightTextures[3] = {nullptr};
+SDL_Texture *mapSelectBackgroundTexture = nullptr;
+
+Mix_Chunk *winSound = nullptr;
+Mix_Chunk *buffSound = nullptr;
+Mix_Chunk *jumpSound = nullptr;
 
 
-// Hàm tiện ích tải texture (giữ nguyên)
 SDL_Texture* loadTexture(const char* path, SDL_Renderer* renderer) {
     SDL_Texture* newTexture = IMG_LoadTexture(renderer, path);
     if (newTexture == nullptr) {
@@ -38,9 +41,8 @@ SDL_Texture* loadTexture(const char* path, SDL_Renderer* renderer) {
     return newTexture;
 }
 
-// Hàm tải tất cả texture (đã sửa)
 bool Load_textures(SDL_Renderer* renderer) {
-    bool success = true; // Giả định thành công ban đầu
+    bool success = true;
 
     std::cout << "Loading textures..." << std::endl;
 
@@ -77,10 +79,15 @@ bool Load_textures(SDL_Renderer* renderer) {
     coinTexture = loadTexture("Texture/Coin.png", renderer);
     if (coinTexture == nullptr) success = false;
 
-    finishLineTexture = loadTexture("Texture/Finish_line.png", renderer);
+    finishLineTexture = loadTexture("Texture/Flag.png", renderer);
     if (finishLineTexture == nullptr) success = false;
 
-    // Tải animation Jump
+    mapSelectBackgroundTexture = loadTexture("Texture/Background.png", renderer);
+    if (mapSelectBackgroundTexture == nullptr) {
+         std::cerr << "!!! Failed to load map select background texture." << std::endl;
+            success = false;
+    }
+
     for (int i = 0; i < 7; i++) {
         std::string jumpLeftPath = "Texture/Jump_left_" + std::to_string(i + 1) + ".png";
         jumpLeftTextures[i] = loadTexture(jumpLeftPath.c_str(), renderer);
@@ -97,7 +104,6 @@ bool Load_textures(SDL_Renderer* renderer) {
         }
     }
 
-    // Tải animation Run
     for (int i = 0; i < 3; i++) {
         std::string runLeftPath = "Texture/Run_left_" + std::to_string(i + 1) + ".png";
         runLeftTextures[i] = loadTexture(runLeftPath.c_str(), renderer);
@@ -114,20 +120,36 @@ bool Load_textures(SDL_Renderer* renderer) {
         }
     }
 
+    std::cout << "Loading sound effects..." << std::endl;
+    winSound = Mix_LoadWAV("Sound/win.wav");
+    if (winSound == nullptr) {
+        std::cerr << "Failed to load win sound effect! Mix_Error: " << Mix_GetError() << std::endl;
+        success = false;
+    }
+    buffSound = Mix_LoadWAV("Sound/buff.wav");
+    if (buffSound == nullptr) {
+        std::cerr << "Failed to load buff sound effect! Mix_Error: " << Mix_GetError() << std::endl;
+        success = false;
+    }
+    jumpSound = Mix_LoadWAV("Sound/jump.wav");
+    if (jumpSound == nullptr) {
+        std::cerr << "Failed to load jump sound effect! Mix_Error: " << Mix_GetError() << std::endl;
+        success = false;
+    }
+    else  Mix_VolumeChunk(jumpSound, 15);
+
+
     if (success) {
-        std::cout << "All textures loaded successfully." << std::endl;
+        std::cout << "All textures, font, and sound effects loaded successfully." << std::endl;
     } else {
-        std::cerr << "!!! Failed to load one or more textures." << std::endl;
+        std::cerr << "!!! Failed to load one or more textures, font, or sound effects." << std::endl;
     }
 
     return success;
 }
 
-
-// Hàm dọn dẹp texture và font (đã sửa)
 void Clean_up_textures() {
-    std::cout << "Cleaning up textures and font..." << std::endl;
-
+    std::cout << "Cleaning up textures, font, and sound effects..." << std::endl;
 
     if (groundTexture) { SDL_DestroyTexture(groundTexture); groundTexture = nullptr; }
     if (flyBlockTexture) { SDL_DestroyTexture(flyBlockTexture); flyBlockTexture = nullptr; }
@@ -140,6 +162,11 @@ void Clean_up_textures() {
     if (pipeBodyTexture) { SDL_DestroyTexture(pipeBodyTexture); pipeBodyTexture = nullptr; }
     if (coinTexture) { SDL_DestroyTexture(coinTexture); coinTexture = nullptr; }
     if (finishLineTexture) { SDL_DestroyTexture(finishLineTexture); finishLineTexture = nullptr; }
+    if (heartTexture) { SDL_DestroyTexture(heartTexture); heartTexture = nullptr; }
+    if (mapSelectBackgroundTexture) {
+        SDL_DestroyTexture(mapSelectBackgroundTexture);
+        mapSelectBackgroundTexture = nullptr;
+    }
     for(int i=0; i<2; ++i) { if(enemyTextures[i]) { SDL_DestroyTexture(enemyTextures[i]); enemyTextures[i] = nullptr; } }
     for(int i=0; i<7; ++i) {
         if(jumpLeftTextures[i]) { SDL_DestroyTexture(jumpLeftTextures[i]); jumpLeftTextures[i] = nullptr; }
@@ -150,6 +177,9 @@ void Clean_up_textures() {
         if(runRightTextures[i]) { SDL_DestroyTexture(runRightTextures[i]); runRightTextures[i] = nullptr; }
     }
 
+    if (winSound) { Mix_FreeChunk(winSound); winSound = nullptr; std::cout << "Win sound freed." << std::endl;}
+    if (buffSound) { Mix_FreeChunk(buffSound); buffSound = nullptr; std::cout << "Buff sound freed." << std::endl;}
+    if (jumpSound) { Mix_FreeChunk(jumpSound); jumpSound = nullptr; std::cout << "Jump sound freed." << std::endl;}
 
     if (font) {
         TTF_CloseFont(font);
@@ -157,6 +187,5 @@ void Clean_up_textures() {
         std::cout << "Font closed." << std::endl;
     }
 
-    std::cout << "Texture and font cleanup complete." << std::endl;
-  
+    std::cout << "Asset cleanup complete." << std::endl;
 }
